@@ -5,6 +5,7 @@ import com.example.data.local.FavoriteTrackEntity
 import com.example.data.local.HistoryTrackEntity
 import com.example.data.local.PlaylistEntity
 import com.example.data.local.PlaylistTrackCrossRef
+import com.example.data.remote.YouTubeApiService
 import com.example.model.MoodCategory
 import com.example.model.Playlist
 import com.example.model.Track
@@ -13,7 +14,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-class MusicRepository(private val database: AppDatabase) {
+class MusicRepository(
+    private val database: AppDatabase,
+    val apiService: YouTubeApiService = YouTubeApiService()
+) {
 
     private val dao = database.musicDao()
 
@@ -141,6 +145,54 @@ class MusicRepository(private val database: AppDatabase) {
                 streamUrl = ref.streamUrl
             )
         }
+    }
+
+    suspend fun syncYouTubeData(token: String): Pair<Int, Int> = withContext(Dispatchers.IO) {
+        var likedCount = 0
+        var playlistCount = 0
+
+        // 1. Fetch user's liked music from YouTube
+        val likedSongs = apiService.fetchLikedSongs(token)
+        likedSongs.forEach { track ->
+            dao.insertFavorite(
+                FavoriteTrackEntity(
+                    id = track.id,
+                    title = track.title,
+                    artist = track.artist,
+                    album = "Liked on YouTube",
+                    durationSeconds = track.durationSeconds,
+                    thumbnailUrl = track.thumbnailUrl,
+                    streamUrl = track.streamUrl,
+                    lyrics = "",
+                    genre = "Liked on YouTube"
+                )
+            )
+            likedCount++
+        }
+
+        // 2. Fetch user's playlists from YouTube
+        val ytPlaylists = apiService.fetchMyPlaylists(token)
+        ytPlaylists.forEach { pl ->
+            dao.insertPlaylist(
+                PlaylistEntity(
+                    id = pl.id,
+                    name = pl.name,
+                    description = pl.description,
+                    coverUrl = pl.coverUrl
+                )
+            )
+            playlistCount++
+        }
+
+        Pair(likedCount, playlistCount)
+    }
+
+    suspend fun rateOnYouTube(token: String, videoId: String, isLike: Boolean): Boolean {
+        return apiService.rateVideo(token, videoId, isLike)
+    }
+
+    suspend fun createPlaylistOnYouTube(token: String, title: String, description: String): Boolean {
+        return apiService.createPlaylist(token, title, description)
     }
 
     // Curated catalog with verified audio streams

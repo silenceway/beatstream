@@ -13,7 +13,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
@@ -61,19 +61,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.service.MusicPlaybackService
 import com.example.ui.MainViewModel
+import com.example.ui.components.AccountDialog
 import com.example.ui.components.AddToPlaylistDialog
 import com.example.ui.components.CreatePlaylistDialog
 import com.example.ui.components.EqualizerDialog
 import com.example.ui.components.FullPlayerSheet
+import com.example.ui.components.GoogleLoginDialog
 import com.example.ui.components.MiniPlayer
 import com.example.ui.components.SleepTimerDialog
 import com.example.ui.screens.ExploreScreen
@@ -83,7 +86,6 @@ import com.example.ui.screens.SearchScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.YTRed
 import com.example.ui.theme.YTSurface
-import com.example.ui.theme.YTSurfaceElevated
 
 class MainActivity : ComponentActivity() {
 
@@ -143,6 +145,7 @@ class MainActivity : ComponentActivity() {
 fun BeatStreamApp(viewModel: MainViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
+    val userAccount by viewModel.userAccount.collectAsStateWithLifecycle()
     val favoriteTracks by viewModel.favoriteTracks.collectAsStateWithLifecycle()
     val historyTracks by viewModel.historyTracks.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
@@ -236,6 +239,29 @@ fun BeatStreamApp(viewModel: MainViewModel) {
                                 imageVector = Icons.Default.Timer,
                                 contentDescription = "Sleep timer",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // YouTube Account Action
+                    IconButton(
+                        onClick = { viewModel.showAccountDialog(true) },
+                        modifier = Modifier.size(48.dp).testTag("top_bar_account_btn")
+                    ) {
+                        if (userAccount.isLoggedIn && userAccount.avatarUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = userAccount.avatarUrl,
+                                contentDescription = "Account Profile",
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.AccountCircle,
+                                contentDescription = "Account Profile",
+                                tint = if (userAccount.isLoggedIn) Color(0xFF00E676) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -353,6 +379,10 @@ fun BeatStreamApp(viewModel: MainViewModel) {
                     favoriteTracks = favoriteTracks,
                     historyTracks = historyTracks,
                     playlists = playlists,
+                    userAccount = userAccount,
+                    isSyncing = uiState.isSyncing,
+                    onAccountClick = { viewModel.showAccountDialog(true) },
+                    onSyncClick = { viewModel.syncWithYouTube() },
                     onCreatePlaylistClick = { viewModel.showCreatePlaylist(true) },
                     onDeletePlaylist = { viewModel.deletePlaylist(it) },
                     onTrackClick = { track, queue -> viewModel.playTrack(track, queue) },
@@ -440,6 +470,32 @@ fun BeatStreamApp(viewModel: MainViewModel) {
             onCreateNewClick = {
                 viewModel.showCreatePlaylist(true)
             }
+        )
+    }
+
+    // YouTube Account Dialog
+    if (uiState.showAccountDialog) {
+        AccountDialog(
+            account = userAccount,
+            isSyncing = uiState.isSyncing,
+            onSignInClick = {
+                viewModel.showAccountDialog(false)
+                viewModel.showGoogleLogin(true)
+            },
+            onSignOutClick = { viewModel.signOut() },
+            onSyncClick = { viewModel.syncWithYouTube() },
+            onDismiss = { viewModel.showAccountDialog(false) }
+        )
+    }
+
+    // Google Login WebView Dialog
+    if (uiState.showGoogleLoginDialog) {
+        GoogleLoginDialog(
+            authUrl = viewModel.authManager.getOAuthUrl(),
+            onSuccess = { token ->
+                viewModel.onGoogleLoginSuccess(token)
+            },
+            onDismiss = { viewModel.showGoogleLogin(false) }
         )
     }
 }

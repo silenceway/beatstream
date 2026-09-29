@@ -3,6 +3,8 @@ package com.example.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.auth.AuthManager
+import com.example.auth.UserAccount
 import com.example.data.MusicRepository
 import com.example.data.local.AppDatabase
 import com.example.model.MoodCategory
@@ -15,7 +17,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -27,6 +28,10 @@ data class UiState(
     val showSleepTimerDialog: Boolean = false,
     val trackForPlaylist: Track? = null,
     val showCreatePlaylistDialog: Boolean = false,
+    val showAccountDialog: Boolean = false,
+    val showGoogleLoginDialog: Boolean = false,
+    val isSyncing: Boolean = false,
+    val syncStatusMessage: String? = null,
     val searchQuery: String = "",
     val selectedGenreFilter: String = "All",
     val selectedMood: MoodCategory? = null,
@@ -38,8 +43,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val repository = MusicRepository(AppDatabase.getDatabase(application))
     val playerController = PlayerController(application)
+    val authManager = AuthManager(application)
 
     val playerState: StateFlow<PlayerState> = playerController.state
+    val userAccount: StateFlow<UserAccount> = authManager.accountState
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
@@ -66,6 +73,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 repository.recordPlay(track)
             }
+        }
+
+        // If user already logged in, check profile or sync
+        if (authManager.accountState.value.isLoggedIn) {
+            syncWithYouTube()
         }
     }
 
@@ -95,6 +107,59 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun showCreatePlaylist(show: Boolean) {
         _uiState.update { it.copy(showCreatePlaylistDialog = show) }
+    }
+
+    fun showAccountDialog(show: Boolean) {
+        _uiState.update { it.copy(showAccountDialog = show) }
+    }
+
+    fun showGoogleLogin(show: Boolean) {
+        _uiState.update { it.copy(showGoogleLoginDialog = show) }
+    }
+
+    fun onGoogleLoginSuccess(token: String) {
+        authManager.saveToken(token)
+        _uiState.update { it.copy(showGoogleLoginDialog = false, isSyncing = true) }
+
+        viewModelScope.launch {
+            // Fetch profile
+            val profile = repository.apiService.fetchUserProfile(token)
+            if (profile != null) {
+                authManager.updateProfile(profile.name, profile.email, profile.pictureUrl)
+            }
+            // Auto sync playlists and liked music
+            syncWithYouTube()
+        }
+    }
+
+    fun syncWithYouTube() {
+        val token = authManager.accountState.value.accessToken
+        if (token.isBlank()) return
+
+        _uiState.update { it.copy(isSyncing = true, syncStatusMessage = "Syncing with YouTube...") }
+        viewModelScope.launch {
+            try {
+                val (likedCount, playlistCount) = repository.syncYouTubeData(token)
+                _uiState.update {
+                    it.copy(
+                        isSyncing = false,
+                        syncStatusMessage = "Synced $likedCount liked songs & $playlistCount playlists!"
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSyncing = false,
+                        syncStatusMessage = "Sync complete"
+                    )
+                }
+            }
+        }
+    }
+
+    fun signOut() {
+        authManager.signOut()
+        _uiState.update { it.copy(showAccountDialog = false) }
     }
 
     fun playTrack(track: Track, queue: List<Track>? = null) {
@@ -147,7 +212,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleFavorite(track: Track) {
         viewModelScope.launch {
-            repository.toggleFavorite(track)
+            val isNowFavorite = repository.toggleFavorite(track)
+
+            // If signed into YouTube, sync the like to official YouTube account!
+            val token = authManager.accountState.value.accessToken
+            if (token.isNotBlank()) {
+                repository.rateOnYouTube(token, track.id, isNowFavorite)
+            }
         }
     }
 
@@ -188,6 +259,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (name.isBlank()) return
         viewModelScope.launch {
             repository.createPlaylist(name, description)
+
+            // If logged in, create directly in YouTube account
+            val token = authManager.accountState.value.accessToken
+            if (token.isNotBlank()) {
+                repository.createPlaylistOnYouTube(token, name, description)
+            }
+
             _uiState.update { it.copy(showCreatePlaylistDialog = false) }
         }
     }

@@ -16,24 +16,27 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,10 +45,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.auth.UserAccount
 import com.example.model.Playlist
 import com.example.model.Track
 import com.example.player.PlayerState
@@ -59,6 +65,10 @@ fun LibraryScreen(
     favoriteTracks: List<Track>,
     historyTracks: List<Track>,
     playlists: List<Playlist>,
+    userAccount: UserAccount,
+    isSyncing: Boolean,
+    onAccountClick: () -> Unit,
+    onSyncClick: () -> Unit,
     onCreatePlaylistClick: () -> Unit,
     onDeletePlaylist: (Long) -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
@@ -73,35 +83,146 @@ fun LibraryScreen(
             .testTag("library_screen"),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 90.dp)
     ) {
+        // YouTube Account Cloud Sync Banner
+        item {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(onClick = onAccountClick),
+                color = YTSurfaceElevated,
+                tonalElevation = 4.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (userAccount.isLoggedIn && userAccount.avatarUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = userAccount.avatarUrl,
+                                contentDescription = "Profile",
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Surface(
+                                modifier = Modifier.size(42.dp),
+                                shape = CircleShape,
+                                color = if (userAccount.isLoggedIn) Color(0xFF1B5E20) else YTRed.copy(alpha = 0.2f)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (userAccount.isLoggedIn) Icons.Default.CloudDone else Icons.Default.CloudSync,
+                                        contentDescription = null,
+                                        tint = if (userAccount.isLoggedIn) Color(0xFF00E676) else YTRed,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column {
+                            if (userAccount.isLoggedIn) {
+                                Text(
+                                    text = userAccount.name.ifBlank { "YouTube Account" },
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Text(
+                                    text = "Cloud sync active • Tap for options",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = Color(0xFF00E676)
+                                )
+                            } else {
+                                Text(
+                                    text = "Sign in to YouTube",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Text(
+                                    text = "Sync likes & playlists to your YouTube account",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    if (userAccount.isLoggedIn) {
+                        IconButton(
+                            onClick = onSyncClick,
+                            enabled = !isSyncing,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            if (isSyncing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = YTRed,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Sync,
+                                    contentDescription = "Sync now",
+                                    tint = YTRed
+                                )
+                            }
+                        }
+                    } else {
+                        Button(
+                            onClick = onAccountClick,
+                            colors = ButtonDefaults.buttonColors(containerColor = YTRed),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Text("Sign In", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
         // Android 6.0 Device Compatibility Badge
         item {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                color = YTSurfaceElevated,
+                    .padding(vertical = 4.dp),
+                color = YTSurfaceElevated.copy(alpha = 0.6f),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(12.dp),
+                    modifier = Modifier.padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Default.PhoneAndroid,
                         contentDescription = null,
                         tint = Color(0xFF00E676),
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(20.dp)
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
                             text = "Android 6.0 (Marshmallow API 23) Ready",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
                             text = "Local USB APK transfer • Offline-cached database & streaming",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -165,7 +286,7 @@ fun LibraryScreen(
                                     color = Color.White
                                 )
                                 Text(
-                                    text = "${favoriteTracks.size} songs",
+                                    text = "${favoriteTracks.size} songs ${if (userAccount.isLoggedIn) "• Synced with YouTube" else ""}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color.White.copy(alpha = 0.8f)
                                 )
@@ -247,12 +368,12 @@ fun LibraryScreen(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "No custom playlists yet",
+                            text = "No playlists yet",
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            text = "Create your own playlists to organize your favorite YouTube music tracks.",
+                            text = "Create custom playlists or sign in to sync your YouTube playlists.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -283,12 +404,21 @@ fun LibraryScreen(
                                     .background(MaterialTheme.colorScheme.surfaceVariant),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlaylistPlay,
-                                    contentDescription = null,
-                                    tint = YTRed,
-                                    modifier = Modifier.size(24.dp)
-                                )
+                                if (pl.coverUrl.isNotBlank()) {
+                                    AsyncImage(
+                                        model = pl.coverUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.PlaylistPlay,
+                                        contentDescription = null,
+                                        tint = YTRed,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
@@ -318,11 +448,11 @@ fun LibraryScreen(
             }
         }
 
-        // Liked Songs List (if any)
+        // Liked Songs List
         if (favoriteTracks.isNotEmpty()) {
             item {
                 Text(
-                    text = "Favorites",
+                    text = "Favorites (${favoriteTracks.size})",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.padding(top = 20.dp, bottom = 8.dp)
