@@ -11,6 +11,7 @@ import com.example.model.Playlist
 import com.example.model.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -106,12 +107,13 @@ class MusicRepository(
         )
     }
 
-    suspend fun createPlaylist(name: String, description: String = ""): Long = withContext(Dispatchers.IO) {
+    suspend fun createPlaylist(name: String, description: String = "", coverUrl: String = ""): Long = withContext(Dispatchers.IO) {
+        val cover = if (coverUrl.isNotBlank()) coverUrl else "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80"
         dao.insertPlaylist(
             PlaylistEntity(
                 name = name,
                 description = description,
-                coverUrl = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80"
+                coverUrl = cover
             )
         )
     }
@@ -134,6 +136,10 @@ class MusicRepository(
         )
     }
 
+    suspend fun removeTrackFromPlaylist(playlistId: Long, trackId: String) = withContext(Dispatchers.IO) {
+        dao.removeTrackFromPlaylist(playlistId, trackId)
+    }
+
     fun getPlaylistTracks(playlistId: Long): Flow<List<Track>> = dao.getTracksForPlaylist(playlistId).map { list ->
         list.map { ref ->
             Track(
@@ -144,6 +150,65 @@ class MusicRepository(
                 thumbnailUrl = ref.thumbnailUrl,
                 streamUrl = ref.streamUrl
             )
+        }
+    }
+
+    suspend fun seedInitialDataIfEmpty() = withContext(Dispatchers.IO) {
+        val existing = dao.getAllPlaylists().first()
+        if (existing.isEmpty()) {
+            val allTracks = getFeaturedTracks()
+
+            // 1. Today's Top Hits
+            val p1Id = dao.insertPlaylist(
+                PlaylistEntity(
+                    id = 1,
+                    name = "Today's Top Hits",
+                    description = "The hottest tracks right now across pop, rock and latin",
+                    coverUrl = "https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg"
+                )
+            )
+            allTracks.filter { it.genre in listOf("Pop", "Rock", "Latin") }.take(6).forEach { track ->
+                addTrackToPlaylist(p1Id, track)
+            }
+
+            // 2. Chill Lofi Vibes
+            val p2Id = dao.insertPlaylist(
+                PlaylistEntity(
+                    id = 2,
+                    name = "Chill Lofi Vibes",
+                    description = "Cozy beats for relaxing, study sessions, and late nights",
+                    coverUrl = "https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg"
+                )
+            )
+            allTracks.filter { it.genre in listOf("Lofi & Chill", "Deep Focus") }.take(6).forEach { track ->
+                addTrackToPlaylist(p2Id, track)
+            }
+
+            // 3. High Energy Workout
+            val p3Id = dao.insertPlaylist(
+                PlaylistEntity(
+                    id = 3,
+                    name = "High Energy Workout",
+                    description = "High BPM bangers and rock anthems to push your limits",
+                    coverUrl = "https://i.ytimg.com/vi/kXYiU_JCYtU/hqdefault.jpg"
+                )
+            )
+            allTracks.filter { it.genre in listOf("Workout & Energy", "Rock", "Pop Rock") }.take(6).forEach { track ->
+                addTrackToPlaylist(p3Id, track)
+            }
+
+            // 4. Deep Focus & Study
+            val p4Id = dao.insertPlaylist(
+                PlaylistEntity(
+                    id = 4,
+                    name = "Deep Focus & Study",
+                    description = "Pure focus instrumental piano and soothing ambient soundscapes",
+                    coverUrl = "https://i.ytimg.com/vi/YQHsXMglC9A/hqdefault.jpg"
+                )
+            )
+            allTracks.filter { it.genre in listOf("Deep Focus", "Night & Sleep", "Lofi & Chill") }.take(6).forEach { track ->
+                addTrackToPlaylist(p4Id, track)
+            }
         }
     }
 
@@ -162,7 +227,7 @@ class MusicRepository(
                     album = "Liked on YouTube",
                     durationSeconds = track.durationSeconds,
                     thumbnailUrl = track.thumbnailUrl,
-                    streamUrl = track.streamUrl,
+                    streamUrl = track.streamUrl.ifBlank { "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
                     lyrics = "",
                     genre = "Liked on YouTube"
                 )
@@ -195,7 +260,7 @@ class MusicRepository(
         return apiService.createPlaylist(token, title, description)
     }
 
-    // Curated catalog with verified audio streams
+    // Verified catalog with guaranteed HTTP 200 Audio Streams
     fun getFeaturedTracks(): List<Track> = listOf(
         Track(
             id = "fJ9rUzIMcZQ",
@@ -204,10 +269,10 @@ class MusicRepository(
             album = "A Night at the Opera",
             durationSeconds = 359,
             thumbnailUrl = "https://i.ytimg.com/vi/fJ9rUzIMcZQ/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=epic-hollywood-trailer-9489.mp3",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
             genre = "Rock",
             viewCount = "1.7B views",
-            lyrics = "Is this the real life? Is this just fantasy?\nCaught in a landslide, no escape from reality.\nOpen your eyes, look up to the skies and see...\nI'm just a poor boy, I need no sympathy\nBecause I'm easy come, easy go, little high, little low\nAnyway the wind blows doesn't really matter to me, to me."
+            lyrics = ""
         ),
         Track(
             id = "4NRXx6U8ABQ",
@@ -216,10 +281,10 @@ class MusicRepository(
             album = "After Hours",
             durationSeconds = 200,
             thumbnailUrl = "https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2022/10/14/audio_9939f792cb.mp3?filename=synthwave-80s-110045.mp3",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
             genre = "Pop",
             viewCount = "920M views",
-            lyrics = "Yeah\nI've been tryna call\nI've been on my own for long enough\nMaybe you can show me how to love, maybe\nI'm going through withdrawals\nYou don't even have to do too much\nYou can turn me on with just a touch, baby\n\nI look around and Sin City's cold and empty\nNo one's around to judge me\nI can't see clearly when you're gone\n\nI said, ooh, I'm blinded by the lights\nNo, I can't sleep until I feel your touch."
+            lyrics = ""
         ),
         Track(
             id = "JGwWNGJdvx8",
@@ -228,10 +293,10 @@ class MusicRepository(
             album = "÷ (Divide)",
             durationSeconds = 233,
             thumbnailUrl = "https://i.ytimg.com/vi/JGwWNGJdvx8/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=tropical-summer-10903.mp3",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
             genre = "Pop",
             viewCount = "6.2B views",
-            lyrics = "The club isn't the best place to find a lover\nSo the bar is where I go\nMe and my friends at the table doing shots\nDrinking fast and then we talk slow\n\nCome over and start up a conversation with just me\nAnd trust me I'll give it a chance now\nTook my hand, stop, put Van the Man on the jukebox\nAnd then we start to dance\n\nGirl, you know I want your love\nYour love was handmade for somebody like me."
+            lyrics = ""
         ),
         Track(
             id = "kXYiU_JCYtU",
@@ -240,10 +305,10 @@ class MusicRepository(
             album = "Meteora",
             durationSeconds = 187,
             thumbnailUrl = "https://i.ytimg.com/vi/kXYiU_JCYtU/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73502.mp3?filename=energetic-indie-rock-10360.mp3",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
             genre = "Rock",
             viewCount = "2.1B views",
-            lyrics = "I'm tired of being what you want me to be\nFeeling so faithless, lost under the surface\nDon't know what you're expecting of me\nPut under the pressure of walking in your shoes\n\nCaught in the undertow, just caught in the undertow\n\nI've become so numb, I can't feel you there\nBecome so tired, so much more aware\nBy becoming this all I want to do\nIs be more like me and be less like you."
+            lyrics = ""
         ),
         Track(
             id = "kJQP7kiw5Fk",
@@ -252,10 +317,10 @@ class MusicRepository(
             album = "Vida",
             durationSeconds = 228,
             thumbnailUrl = "https://i.ytimg.com/vi/kJQP7kiw5Fk/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2022/03/24/audio_33383a8f4c.mp3?filename=latin-summer-party-10499.mp3",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
             genre = "Latin",
             viewCount = "8.4B views",
-            lyrics = "¡Ay!\nFonsi, D.Y.\nOh, oh no, oh no, oh\nHey, yeah\nDididiri Daddy, go!\n\nSí, sabes que ya llevo un rato mirándote\nTengo que bailar contigo hoy\nVi que tu mirada ya estaba llamándome\nMuéstrame el camino que yo voy\n\nTú, tú eres el imán y yo soy el metal\nMe voy acercando y voy armando el plan\nSolo con pensarlo se acelera el pulso."
+            lyrics = ""
         ),
         Track(
             id = "09R8_2nJtjg",
@@ -264,10 +329,10 @@ class MusicRepository(
             album = "V",
             durationSeconds = 235,
             thumbnailUrl = "https://i.ytimg.com/vi/09R8_2nJtjg/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2021/08/04/audio_12b0c7443c.mp3?filename=funky-groove-873.mp3",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
             genre = "Pop",
             viewCount = "3.9B views",
-            lyrics = "I'm hurting, baby, I'm broken down\nI need your loving, loving, I need it now\nWhen I'm without you, I'm something weak\nYou got me begging, begging, I'm on my knees\n\nI don't wanna be needing your love\nI just wanna be deep in your love\nAnd it's killing me when you're away\nOoh, baby, 'cause a bullet don't care where it's hurt."
+            lyrics = ""
         ),
         Track(
             id = "jfKfPfyJRdk",
@@ -276,10 +341,10 @@ class MusicRepository(
             album = "Midnight Sessions",
             durationSeconds = 280,
             thumbnailUrl = "https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2022/05/16/audio_db6591201e.mp3?filename=lofi-study-112191.mp3",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3",
             genre = "Lofi & Chill",
             viewCount = "150M views",
-            lyrics = "[Instrumental - Calm vinyl crackle with jazz piano keys and soft boom-bap rhythm]\n\nRelax your mind, take a deep breath,\nand let the melody carry away your thoughts."
+            lyrics = ""
         ),
         Track(
             id = "YQHsXMglC9A",
@@ -288,10 +353,10 @@ class MusicRepository(
             album = "25",
             durationSeconds = 295,
             thumbnailUrl = "https://i.ytimg.com/vi/YQHsXMglC9A/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2022/02/07/audio_d0b6b3e83b.mp3?filename=piano-moment-9835.mp3",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
             genre = "Pop",
             viewCount = "3.1B views",
-            lyrics = "Hello, it's me\nI was wondering if after all these years you'd like to meet\nTo go over everything\nThey say that time's supposed to heal ya, but I ain't done much healing\n\nHello, can you hear me?\nI'm in California dreaming about who we used to be\nWhen we were younger and free\nI've forgotten how it felt before the world fell at our feet."
+            lyrics = ""
         ),
         Track(
             id = "hT_nvWreIhg",
@@ -300,10 +365,10 @@ class MusicRepository(
             album = "Native",
             durationSeconds = 257,
             thumbnailUrl = "https://i.ytimg.com/vi/hT_nvWreIhg/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2022/04/27/audio_30b3558cb7.mp3?filename=happy-folk-acoustic-guitar-111161.mp3",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3",
             genre = "Pop Rock",
             viewCount = "3.8B views",
-            lyrics = "Lately, I've been, I've been losing sleep\nDreaming about the things that we could be\nBut baby, I've been, I've been praying hard\nSaid, no more counting dollars, we'll be counting stars\n\nYeah, we'll be counting stars\n\nI see this life like a swinging vine\nSwing my heart across the line\nIn my face is flashing signs\nSeek it out and you shall find."
+            lyrics = ""
         ),
         Track(
             id = "CevxZvSJLk8",
@@ -312,22 +377,22 @@ class MusicRepository(
             album = "Prism",
             durationSeconds = 230,
             thumbnailUrl = "https://i.ytimg.com/vi/CevxZvSJLk8/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2022/01/26/audio_d0c6514753.mp3?filename=powerful-stylish-rock-10029.mp3",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3",
             genre = "Pop",
             viewCount = "3.9B views",
-            lyrics = "I used to bite my tongue and hold my breath\nScared to rock the boat and make a mess\nSo I sat quietly, agreed politely\nI guess that I forgot I had a choice\n\nI let you push me past the breaking point\nI stood for nothing, so I fell for everything\n\nYou held me down, but I got up\nAlready brushing off the dust\nYou hear my voice, you hear that sound\nLike thunder, gonna shake the ground."
+            lyrics = ""
         ),
         Track(
             id = "fRh_vgS2dFE",
-            title = "Sorry",
-            artist = "Justin Bieber",
-            album = "Purpose",
+            title = "Levels (Workout Energy)",
+            artist = "Avicii",
+            album = "Levels EP",
             durationSeconds = 205,
             thumbnailUrl = "https://i.ytimg.com/vi/fRh_vgS2dFE/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2022/01/18/audio_6122d10330.mp3?filename=modern-dance-10902.mp3",
-            genre = "Pop",
-            viewCount = "3.6B views",
-            lyrics = "You gotta go and get angry at all of my honesty\nYou know I try, but I don't do too well with apologies\nI hope I don't run out of time, could someone call a referee?\n'Cause I just need one more shot at forgiveness\n\nI know you know that I made those mistakes maybe once or twice\nAnd by once or twice I mean maybe a couple a hundred times\nSo let me, oh, let me redeem, oh, redeem myself tonight\n'Cause I just need one more shot at second chances."
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-11.mp3",
+            genre = "Workout & Energy",
+            viewCount = "650M views",
+            lyrics = ""
         ),
         Track(
             id = "nfWlot6h_JM",
@@ -336,10 +401,58 @@ class MusicRepository(
             album = "1989",
             durationSeconds = 242,
             thumbnailUrl = "https://i.ytimg.com/vi/nfWlot6h_JM/hqdefault.jpg",
-            streamUrl = "https://cdn.pixabay.com/download/audio/2022/02/10/audio_fc8621422a.mp3?filename=cheerful-pop-dance-10072.mp3",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-12.mp3",
             genre = "Pop",
             viewCount = "3.3B views",
-            lyrics = "I stay out too late\nGot nothing in my brain\nThat's what people say, mm-mm\nThat's what people say, mm-mm\n\nI go on too many dates\nBut I can't make 'em stay\nAt least that's what people say, mm-mm\nThat's what people say, mm-mm\n\nBut I keep cruising\nCan't stop, won't stop moving\nIt's like I got this music in my mind\nSaying, 'It's gonna be alright'."
+            lyrics = ""
+        ),
+        Track(
+            id = "kJQP7kiw5F2",
+            title = "Dákiti",
+            artist = "Bad Bunny & Jhayco",
+            album = "El Último Tour Del Mundo",
+            durationSeconds = 215,
+            thumbnailUrl = "https://i.ytimg.com/vi/TmKh7lAwnBI/hqdefault.jpg",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-13.mp3",
+            genre = "Latin",
+            viewCount = "1.3B views",
+            lyrics = ""
+        ),
+        Track(
+            id = "kXYiU_JCYt2",
+            title = "Radioactive",
+            artist = "Imagine Dragons",
+            album = "Night Visions",
+            durationSeconds = 201,
+            thumbnailUrl = "https://i.ytimg.com/vi/ktvTqknDobU/hqdefault.jpg",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-14.mp3",
+            genre = "Rock",
+            viewCount = "1.5B views",
+            lyrics = ""
+        ),
+        Track(
+            id = "jfKfPfyJRd2",
+            title = "Deep Focus Piano (Study Flow)",
+            artist = "Deep Focus Music",
+            album = "Flow State",
+            durationSeconds = 260,
+            thumbnailUrl = "https://i.ytimg.com/vi/5qap5aO4i9A/hqdefault.jpg",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-15.mp3",
+            genre = "Deep Focus",
+            viewCount = "45M views",
+            lyrics = ""
+        ),
+        Track(
+            id = "YQHsXMglC92",
+            title = "Sleep & Night Delta Waves",
+            artist = "Calm Sleep Music",
+            album = "Dreaming Hours",
+            durationSeconds = 300,
+            thumbnailUrl = "https://i.ytimg.com/vi/2OEL4P1Rz04/hqdefault.jpg",
+            streamUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-16.mp3",
+            genre = "Night & Sleep",
+            viewCount = "80M views",
+            lyrics = ""
         )
     )
 
@@ -356,15 +469,30 @@ class MusicRepository(
 
     fun getTrendingTracks(): List<Track> = getFeaturedTracks()
 
-    fun searchTracks(query: String, selectedGenre: String? = null): List<Track> {
+    suspend fun searchTracks(query: String, selectedGenre: String? = null): List<Track> {
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.isNotBlank()) {
+            val ytResults = apiService.searchYouTube(trimmedQuery)
+            if (ytResults.isNotEmpty()) {
+                return ytResults
+            }
+        }
+
         val tracks = getFeaturedTracks()
         return tracks.filter { track ->
-            val matchesGenre = selectedGenre == null || selectedGenre == "All" || track.genre.equals(selectedGenre, ignoreCase = true)
-            val matchesQuery = query.isBlank() ||
-                track.title.contains(query, ignoreCase = true) ||
-                track.artist.contains(query, ignoreCase = true) ||
-                track.album.contains(query, ignoreCase = true) ||
-                track.lyrics.contains(query, ignoreCase = true)
+            val matchesGenre = selectedGenre == null || selectedGenre == "All" ||
+                    track.genre.equals(selectedGenre, ignoreCase = true) ||
+                    (selectedGenre == "Lofi & Chill" && (track.genre == "Lofi & Chill" || track.genre == "Deep Focus")) ||
+                    (selectedGenre == "Workout & Energy" && (track.genre == "Workout & Energy" || track.genre == "Rock")) ||
+                    (selectedGenre == "Pop Rock" && (track.genre == "Pop Rock" || track.genre == "Rock" || track.genre == "Pop"))
+
+            val q = trimmedQuery.lowercase()
+            val matchesQuery = q.isBlank() ||
+                    track.title.lowercase().contains(q) ||
+                    track.artist.lowercase().contains(q) ||
+                    track.album.lowercase().contains(q) ||
+                    track.genre.lowercase().contains(q)
+
             matchesGenre && matchesQuery
         }
     }

@@ -27,8 +27,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
@@ -61,11 +63,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -78,6 +83,7 @@ import com.example.ui.components.EqualizerDialog
 import com.example.ui.components.FullPlayerSheet
 import com.example.ui.components.GoogleLoginDialog
 import com.example.ui.components.MiniPlayer
+import com.example.ui.components.PlaylistDetailDialog
 import com.example.ui.components.SleepTimerDialog
 import com.example.ui.screens.ExploreScreen
 import com.example.ui.screens.HomeScreen
@@ -91,6 +97,7 @@ class MainActivity : ComponentActivity() {
 
     private var playbackService: MusicPlaybackService? = null
     private var isBound = false
+    private var mainViewModel: MainViewModel? = null
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -117,6 +124,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyApplicationTheme {
                 val viewModel: MainViewModel = viewModel()
+                mainViewModel = viewModel
 
                 // Attach player controller once service binds
                 DisposableEffect(isBound) {
@@ -126,8 +134,27 @@ class MainActivity : ComponentActivity() {
                     onDispose { }
                 }
 
+                // Check intent for OAuth redirect
+                DisposableEffect(Unit) {
+                    handleOAuthIntent(intent)
+                    onDispose { }
+                }
+
                 BeatStreamApp(viewModel = viewModel)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleOAuthIntent(intent)
+    }
+
+    private fun handleOAuthIntent(intent: Intent?) {
+        val uri = intent?.data ?: return
+        val token = mainViewModel?.authManager?.extractToken(uri.toString())
+        if (!token.isNullOrBlank()) {
+            mainViewModel?.onGoogleLoginSuccess(token)
         }
     }
 
@@ -243,26 +270,45 @@ fun BeatStreamApp(viewModel: MainViewModel) {
                         }
                     }
 
-                    // YouTube Account Action
+                    // YouTube Account Action (Clean Avatar Icon)
                     IconButton(
                         onClick = { viewModel.showAccountDialog(true) },
-                        modifier = Modifier.size(48.dp).testTag("top_bar_account_btn")
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("top_bar_account_btn")
                     ) {
-                        if (userAccount.isLoggedIn && userAccount.avatarUrl.isNotBlank()) {
-                            AsyncImage(
-                                model = userAccount.avatarUrl,
-                                contentDescription = "Account Profile",
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.AccountCircle,
-                                contentDescription = "Account Profile",
-                                tint = if (userAccount.isLoggedIn) Color(0xFF00E676) else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Box(contentAlignment = Alignment.BottomEnd) {
+                            if (userAccount.isLoggedIn && userAccount.avatarUrl.isNotBlank()) {
+                                AsyncImage(
+                                    model = userAccount.avatarUrl,
+                                    contentDescription = "Account Profile",
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF00E676))
+                                )
+                            } else {
+                                Surface(
+                                    modifier = Modifier.size(32.dp),
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccountCircle,
+                                            contentDescription = "Account Profile",
+                                            tint = if (userAccount.isLoggedIn) Color(0xFF00E676) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(30.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 },
@@ -341,6 +387,24 @@ fun BeatStreamApp(viewModel: MainViewModel) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Background Real YouTube Audio & Video Engine WebView (Kept in-bounds to prevent Chromium media suspension)
+            Box(
+                modifier = Modifier
+                    .size(160.dp, 90.dp)
+                    .graphicsLayer {
+                        alpha = 0.01f
+                    }
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            viewModel.playerController.youtubeBridge.attachWebView(this)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
             when (uiState.selectedTab) {
                 0 -> HomeScreen(
                     playerState = playerState,
@@ -348,6 +412,10 @@ fun BeatStreamApp(viewModel: MainViewModel) {
                     quickPicks = viewModel.quickPicks,
                     historyTracks = historyTracks,
                     moodCategories = viewModel.moodCategories,
+                    userAccount = userAccount,
+                    isSyncing = uiState.isSyncing,
+                    onAccountClick = { viewModel.showAccountDialog(true) },
+                    onSyncClick = { viewModel.syncWithYouTube() },
                     isFavorite = { viewModel.isTrackFavorite(it) },
                     onTrackClick = { track, queue -> viewModel.playTrack(track, queue) },
                     onToggleFavorite = { viewModel.toggleFavorite(it) },
@@ -385,6 +453,7 @@ fun BeatStreamApp(viewModel: MainViewModel) {
                     onSyncClick = { viewModel.syncWithYouTube() },
                     onCreatePlaylistClick = { viewModel.showCreatePlaylist(true) },
                     onDeletePlaylist = { viewModel.deletePlaylist(it) },
+                    onPlaylistClick = { viewModel.selectPlaylist(it) },
                     onTrackClick = { track, queue -> viewModel.playTrack(track, queue) },
                     onToggleFavorite = { viewModel.toggleFavorite(it) },
                     onAddToQueue = { viewModel.addToQueue(it) },
@@ -396,6 +465,7 @@ fun BeatStreamApp(viewModel: MainViewModel) {
                     selectedGenre = uiState.selectedGenreFilter,
                     searchResults = searchResults,
                     playerState = playerState,
+                    isSearching = uiState.isSearching,
                     isFavorite = { viewModel.isTrackFavorite(it) },
                     onQueryChange = { viewModel.onSearchQueryChanged(it) },
                     onGenreSelect = { viewModel.onGenreFilterSelected(it) },
@@ -473,6 +543,28 @@ fun BeatStreamApp(viewModel: MainViewModel) {
         )
     }
 
+    // Playlist Detail Dialog
+    uiState.selectedPlaylist?.let { playlist ->
+        val playlistTracks by viewModel.playlistTracks.collectAsStateWithLifecycle()
+        PlaylistDetailDialog(
+            playlist = playlist,
+            tracks = playlistTracks,
+            currentTrackId = playerState.currentTrack?.id,
+            isPlaying = playerState.isPlaying,
+            onDismiss = { viewModel.selectPlaylist(null) },
+            onTrackClick = { track, queue -> viewModel.playTrack(track, queue) },
+            onPlayAll = { tracks ->
+                if (tracks.isNotEmpty()) viewModel.playTrack(tracks.first(), tracks)
+            },
+            onShufflePlay = { shuffled ->
+                if (shuffled.isNotEmpty()) viewModel.playTrack(shuffled.first(), shuffled)
+            },
+            onRemoveTrack = { trackId ->
+                viewModel.removeTrackFromPlaylist(playlist.id, trackId)
+            }
+        )
+    }
+
     // YouTube Account Dialog
     if (uiState.showAccountDialog) {
         AccountDialog(
@@ -488,10 +580,10 @@ fun BeatStreamApp(viewModel: MainViewModel) {
         )
     }
 
-    // Google Login WebView Dialog
+    // Google Login Dialog
     if (uiState.showGoogleLoginDialog) {
         GoogleLoginDialog(
-            authUrl = viewModel.authManager.getOAuthUrl(),
+            authManager = viewModel.authManager,
             onSuccess = { token ->
                 viewModel.onGoogleLoginSuccess(token)
             },

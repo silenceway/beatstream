@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.PlaylistAdd
@@ -390,6 +391,40 @@ fun FullPlayerSheet(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
+                        if (playerState.isLoading) {
+                            Surface(
+                                modifier = Modifier
+                                    .padding(bottom = 8.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable(onClick = onTogglePlayPause),
+                                color = YTRed.copy(alpha = 0.15f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        color = YTRed,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Taking too long? Tap to Stop",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = YTRed
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Icon(
+                                        imageVector = Icons.Filled.Stop,
+                                        contentDescription = "Stop",
+                                        tint = YTRed,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+
                         // Primary Playback Controls Row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -436,9 +471,15 @@ fun FullPlayerSheet(
                                 Box(contentAlignment = Alignment.Center) {
                                     if (playerState.isLoading) {
                                         CircularProgressIndicator(
-                                            modifier = Modifier.size(32.dp),
+                                            modifier = Modifier.size(34.dp),
                                             color = Color.White,
                                             strokeWidth = 3.dp
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Filled.Stop,
+                                            contentDescription = "Stop loading",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     } else {
                                         Icon(

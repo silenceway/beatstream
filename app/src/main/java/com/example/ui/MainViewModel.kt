@@ -67,7 +67,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _searchResults = MutableStateFlow(repository.getFeaturedTracks())
     val searchResults: StateFlow<List<Track>> = _searchResults.asStateFlow()
 
+    private val _playlistTracks = MutableStateFlow<List<Track>>(emptyList())
+    val playlistTracks: StateFlow<List<Track>> = _playlistTracks.asStateFlow()
+
     init {
+        // Automatically seed database with curated playlists if empty
+        viewModelScope.launch {
+            repository.seedInitialDataIfEmpty()
+        }
+
         // Automatically attach history logging on track change
         playerController.onTrackChangedListener = { track ->
             viewModelScope.launch {
@@ -250,9 +258,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var searchJob: kotlinx.coroutines.Job? = null
+
     private fun performSearch(query: String, genre: String) {
-        val results = repository.searchTracks(query, genre)
-        _searchResults.value = results
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            if (query.isNotBlank()) {
+                kotlinx.coroutines.delay(250)
+            }
+            _uiState.update { it.copy(isSearching = true) }
+            val results = repository.searchTracks(query, genre)
+            _searchResults.value = results
+            _uiState.update { it.copy(isSearching = false) }
+        }
+    }
+
+    fun stopPlayback() {
+        playerController.stopPlayback()
     }
 
     fun createPlaylist(name: String, description: String = "") {
@@ -285,6 +307,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectPlaylist(playlist: Playlist?) {
         _uiState.update { it.copy(selectedPlaylist = playlist) }
+        if (playlist != null) {
+            viewModelScope.launch {
+                repository.getPlaylistTracks(playlist.id).collect { tracks ->
+                    _playlistTracks.value = tracks
+                }
+            }
+        } else {
+            _playlistTracks.value = emptyList()
+        }
+    }
+
+    fun removeTrackFromPlaylist(playlistId: Long, trackId: String) {
+        viewModelScope.launch {
+            repository.removeTrackFromPlaylist(playlistId, trackId)
+        }
     }
 
     override fun onCleared() {

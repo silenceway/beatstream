@@ -2,6 +2,7 @@ package com.example.auth
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,6 +60,28 @@ class AuthManager(context: Context) {
                 "&response_type=token" +
                 "&scope=$SCOPES" +
                 "&prompt=consent"
+    }
+
+    fun extractToken(input: String): String? {
+        val trimmed = input.trim()
+        if (trimmed.startsWith("ya29.")) {
+            return trimmed
+        }
+        if (trimmed.contains("access_token=")) {
+            val after = trimmed.substringAfter("access_token=")
+            return after.substringBefore("&").substringBefore(" ")
+        }
+        return try {
+            val uri = Uri.parse(trimmed)
+            val fragment = uri.fragment
+            if (!fragment.isNullOrBlank() && fragment.contains("access_token=")) {
+                fragment.substringAfter("access_token=").substringBefore("&")
+            } else {
+                uri.getQueryParameter("access_token")
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun saveToken(token: String) {

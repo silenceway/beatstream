@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -124,7 +125,7 @@ fun MiniPlayer(
                     )
                 }
 
-                // Play / Pause Button
+                // Play / Pause / Stop Button
                 IconButton(
                     onClick = onTogglePlayPause,
                     modifier = Modifier
@@ -132,11 +133,19 @@ fun MiniPlayer(
                         .testTag("mini_play_pause_btn")
                 ) {
                     if (playerState.isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = YTRed,
-                            strokeWidth = 2.5.dp
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(26.dp),
+                                color = YTRed,
+                                strokeWidth = 2.5.dp
+                            )
+                            Icon(
+                                imageVector = Icons.Filled.Stop,
+                                contentDescription = "Stop loading",
+                                tint = YTRed,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
                     } else {
                         Icon(
                             imageVector = if (playerState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -48,6 +50,7 @@ fun SearchScreen(
     selectedGenre: String,
     searchResults: List<Track>,
     playerState: PlayerState,
+    isSearching: Boolean = false,
     isFavorite: (String) -> Boolean,
     onQueryChange: (String) -> Unit,
     onGenreSelect: (String) -> Unit,
@@ -57,7 +60,7 @@ fun SearchScreen(
     onAddToPlaylist: (Track) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val genres = listOf("All", "Pop", "Rock", "Latin", "Lofi & Chill", "Pop Rock")
+    val genres = listOf("All", "Pop", "Rock", "Latin", "Lofi & Chill", "Deep Focus", "Workout & Energy", "Night & Sleep", "Pop Rock")
 
     LazyColumn(
         modifier = modifier
@@ -139,7 +142,31 @@ fun SearchScreen(
             )
         }
 
-        if (searchResults.isEmpty()) {
+        if (isSearching) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        color = YTRed,
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.5.dp
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Searching YouTube...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        if (!isSearching && searchResults.isEmpty()) {
             item {
                 Surface(
                     modifier = Modifier

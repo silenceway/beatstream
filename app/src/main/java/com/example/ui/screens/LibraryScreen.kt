@@ -71,6 +71,7 @@ fun LibraryScreen(
     onSyncClick: () -> Unit,
     onCreatePlaylistClick: () -> Unit,
     onDeletePlaylist: (Long) -> Unit,
+    onPlaylistClick: (Playlist) -> Unit,
     onTrackClick: (Track, List<Track>) -> Unit,
     onToggleFavorite: (Track) -> Unit,
     onAddToQueue: (Track) -> Unit,
@@ -385,7 +386,9 @@ fun LibraryScreen(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp),
+                        .padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onPlaylistClick(pl) },
                     color = YTSurfaceElevated,
                     shape = RoundedCornerShape(10.dp)
                 ) {

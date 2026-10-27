@@ -47,6 +47,8 @@ data class PlayerState(
 
 class PlayerController(private val context: Context) {
 
+    val youtubeBridge = YouTubePlayerBridge(context)
+
     private val tag = "BeatStreamPlayer"
     private var mediaPlayer: MediaPlayer? = null
     private var equalizer: Equalizer? = null
@@ -57,6 +59,7 @@ class PlayerController(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var progressTrackerJob: Job? = null
     private var sleepTimerJob: Job? = null
+    private var loadingTimeoutJob: Job? = null
 
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
@@ -65,6 +68,39 @@ class PlayerController(private val context: Context) {
 
     init {
         initLocks()
+        initYouTubeBridge()
+    }
+
+    private fun initYouTubeBridge() {
+        youtubeBridge.onStateChanged = { state ->
+            when (state) {
+                0 -> handleTrackCompletion()
+                1 -> {
+                    loadingTimeoutJob?.cancel()
+                    _state.update { it.copy(isPlaying = true, isLoading = false, errorMessage = null) }
+                }
+                2 -> _state.update { it.copy(isPlaying = false) }
+                3 -> _state.update { it.copy(isLoading = true) }
+            }
+        }
+        youtubeBridge.onProgressUpdated = { currentMs, durationMs ->
+            _state.update {
+                it.copy(
+                    currentPositionMs = currentMs,
+                    durationMs = if (durationMs > 0) durationMs else it.durationMs
+                )
+            }
+        }
+        youtubeBridge.onError = { errorMsg ->
+            loadingTimeoutJob?.cancel()
+            Log.w(tag, "YouTube stream error: $errorMsg")
+            _state.update {
+                it.copy(
+                    isLoading = false,
+                    errorMessage = "Playback issue: $errorMsg. Tap Stop or try another track."
+                )
+            }
+        }
     }
 
     private fun initLocks() {
@@ -108,17 +144,29 @@ class PlayerController(private val context: Context) {
                 handleTrackCompletion()
             }
 
-            setOnErrorListener { _, what, extra ->
+            val fallbackStream = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+            var isUsingFallback = false
+
+            setOnErrorListener { mp, what, extra ->
                 Log.e(tag, "MediaPlayer error: what=$what, extra=$extra")
+                if (!isUsingFallback) {
+                    isUsingFallback = true
+                    try {
+                        mp.reset()
+                        mp.setDataSource(fallbackStream)
+                        mp.prepareAsync()
+                        return@setOnErrorListener true
+                    } catch (e: Exception) {
+                        Log.e(tag, "Fallback playback failed", e)
+                    }
+                }
                 _state.update {
                     it.copy(
                         isLoading = false,
                         isPlaying = false,
-                        errorMessage = "Stream playback error. Reconnecting..."
+                        errorMessage = "Stream playback error. Check internet connection."
                     )
                 }
-                // Try fallback or next
-                skipNext()
                 true
             }
         }
@@ -194,52 +242,104 @@ class PlayerController(private val context: Context) {
         wakeLock?.acquire(10 * 60 * 1000L /* 10 minutes */)
         wifiLock?.acquire()
 
+        // Stop fallback player if running
+        mediaPlayer?.let {
+            if (it.isPlaying) it.pause()
+        }
+
+        // Play real YouTube track audio
+        startLoadingTimeout()
+        if (track.id.isNotBlank()) {
+            youtubeBridge.loadVideo(track.id)
+        } else {
+            playFallbackWithMediaPlayer(track)
+        }
+    }
+
+    private fun startLoadingTimeout() {
+        loadingTimeoutJob?.cancel()
+        loadingTimeoutJob = scope.launch {
+            delay(10000L) // 10s watchdog timeout
+            if (_state.value.isLoading) {
+                Log.w(tag, "Playback load timed out after 10 seconds")
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "Track taking too long to load. Tap Stop or choose another track."
+                    )
+                }
+            }
+        }
+    }
+
+    fun stopPlayback() {
+        loadingTimeoutJob?.cancel()
+        youtubeBridge.stop()
+        mediaPlayer?.let {
+            if (it.isPlaying) it.pause()
+        }
+        stopProgressTracker()
+        _state.update {
+            it.copy(
+                isLoading = false,
+                isPlaying = false,
+                errorMessage = null
+            )
+        }
+    }
+
+    private fun playFallbackWithMediaPlayer(track: Track?) {
+        if (track == null) return
         try {
             val player = getOrCreatePlayer()
             player.reset()
-            val url = if (track.streamUrl.isNotBlank()) track.streamUrl else "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3"
+            val url = if (track.streamUrl.isNotBlank()) track.streamUrl else ""
+            if (url.isBlank()) {
+                _state.update { it.copy(isLoading = false, errorMessage = "No stream available") }
+                return
+            }
             player.setDataSource(url)
             player.prepareAsync()
         } catch (e: Exception) {
-            Log.e(tag, "Failed to start playback for track ${track.title}", e)
-            _state.update { it.copy(isLoading = false, errorMessage = "Could not load track") }
+            Log.e(tag, "Failed to start fallback playback for track ${track.title}", e)
+            _state.update { it.copy(isLoading = false, errorMessage = "Playback error") }
         }
     }
 
     fun togglePlayPause() {
-        val player = mediaPlayer ?: return
-        if (player.isPlaying) {
-            player.pause()
-            _state.update { it.copy(isPlaying = false) }
-            stopProgressTracker()
+        if (_state.value.isLoading) {
+            stopPlayback()
+        } else if (_state.value.isPlaying) {
+            pause()
         } else {
-            player.start()
-            _state.update { it.copy(isPlaying = true) }
-            startProgressTracker()
+            play()
         }
     }
 
     fun pause() {
+        youtubeBridge.pause()
         mediaPlayer?.let {
             if (it.isPlaying) {
                 it.pause()
-                _state.update { s -> s.copy(isPlaying = false) }
                 stopProgressTracker()
             }
         }
+        _state.update { s -> s.copy(isPlaying = false) }
     }
 
     fun play() {
+        youtubeBridge.play()
         mediaPlayer?.let {
-            if (!it.isPlaying) {
+            if (!it.isPlaying && it.currentPosition > 0) {
                 it.start()
-                _state.update { s -> s.copy(isPlaying = true) }
                 startProgressTracker()
             }
         }
+        _state.update { s -> s.copy(isPlaying = true) }
     }
 
     fun seekTo(positionMs: Long) {
+        youtubeBridge.seekTo(positionMs / 1000f)
         mediaPlayer?.seekTo(positionMs.toInt())
         _state.update { it.copy(currentPositionMs = positionMs) }
     }
@@ -304,6 +404,7 @@ class PlayerController(private val context: Context) {
 
     fun setPlaybackSpeed(speed: Float) {
         _state.update { it.copy(playbackSpeed = speed) }
+        youtubeBridge.setSpeed(speed)
         applyPlaybackSpeed(speed)
     }
 
