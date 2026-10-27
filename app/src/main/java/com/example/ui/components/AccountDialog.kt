@@ -54,6 +54,7 @@ fun AccountDialog(
     onSignInClick: () -> Unit,
     onSignOutClick: () -> Unit,
     onSyncClick: () -> Unit,
+    onRenewTokenClick: () -> Unit = onSignInClick,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -182,6 +183,23 @@ fun AccountDialog(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Sync Liked Songs & Playlists")
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Renew / Refresh Access Token Button
+                    OutlinedButton(
+                        onClick = onRenewTokenClick,
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("renew_token_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = "Renew Token",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Renew / Refresh Access Token")
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))

@@ -574,6 +574,10 @@ fun BeatStreamApp(viewModel: MainViewModel) {
                 viewModel.showAccountDialog(false)
                 viewModel.showGoogleLogin(true)
             },
+            onRenewTokenClick = {
+                viewModel.showAccountDialog(false)
+                viewModel.showGoogleLogin(true)
+            },
             onSignOutClick = { viewModel.signOut() },
             onSyncClick = { viewModel.syncWithYouTube() },
             onDismiss = { viewModel.showAccountDialog(false) }
